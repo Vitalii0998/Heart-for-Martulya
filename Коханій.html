@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <title>Коханій</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background-color: #fff0f5;
+    }
+    canvas {
+      display: block;
+      touch-action: none;
+    }
+  </style>
+</head>
+<body>
+<canvas id="heartCanvas"></canvas>
+<script>
+  const canvas = document.getElementById('heartCanvas');
+  const ctx = canvas.getContext('2d');
+
+  let width = window.innerWidth;
+  let height = window.innerHeight;
+  canvas.width = width;
+  canvas.height = height;
+
+  let centerX = width / 2;
+  let centerY = height / 2;
+
+  const numPoints = 22222;
+  const scale = 22;
+  const repelDistance = 350;
+
+  const textLines = [
+    'For Marta',
+    'My forever love, my little world,',
+    'and my biggest heart'
+  ];
+
+  let points = [];
+
+  function heartFunction(t) {
+    const x = 16 * Math.pow(Math.sin(t), 3);
+    const y = 13 * Math.cos(t) - 5 * Math.cos(2 * t)
+            - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+    return { x: x * scale, y: -y * scale };
+  }
+
+  function easeOutExpo(x) {
+    return x === 1 ? 1 : 1 - Math.pow(2, -10 * x);
+  }
+
+  function getTextPoints(textLines) {
+    const offscreenCanvas = document.createElement('canvas');
+    const ctx2 = offscreenCanvas.getContext('2d');
+    offscreenCanvas.width = width;
+    offscreenCanvas.height = height;
+
+    ctx2.clearRect(0, 0, width, height);
+    ctx2.fillStyle = '#000';
+    ctx2.textAlign = 'center';
+    ctx2.textBaseline = 'middle';
+
+    const fontSize = 26;
+    const startY = centerY - fontSize * (textLines.length - 1);
+    ctx2.font = `bold 60px Arial`;
+    ctx2.fillText(textLines[0], centerX, startY - 40);
+
+    ctx2.font = `${fontSize}px Arial`;
+    for (let i = 1; i < textLines.length; i++) {
+      ctx2.fillText(textLines[i], centerX, startY + i * fontSize * 1.4);
+    }
+
+    const imageData = ctx2.getImageData(0, 0, width, height);
+    const data = imageData.data;
+    const points = [];
+
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const i = (y * width + x) * 4;
+        if (data[i + 3] > 128) {
+          points.push({ x, y });
+        }
+      }
+    }
+
+    return points;
+  }
+
+  function init() {
+    const newPoints = [];
+
+    for (let i = 0; i < numPoints; i++) {
+      let t = Math.random() * 2 * Math.PI;
+      let r = Math.sqrt(Math.random());
+      let pos = heartFunction(t);
+      let px = centerX + pos.x * r + Math.random() * 2 - 1;
+      let py = centerY + pos.y * r + Math.random() * 2 - 1;
+
+      let dx = px - centerX;
+      let dy = py - centerY;
+      let d = Math.sqrt(dx * dx + dy * dy);
+      let maxD = 16 * scale;
+      let rCol = 255;
+      let gCol = Math.floor(64 + 128 * (d / maxD));
+      let bCol = Math.floor(100 + 155 * (d / maxD));
+
+      newPoints.push({
+        x: px,
+        y: py,
+        origX: px,
+        origY: py,
+        vx: 0,
+        vy: 0,
+        color: `rgb(${rCol},${gCol},${bCol})`
+      });
+    }
+
+    const textPointTargets = getTextPoints(textLines);
+	console.log('Text targets found:', textPointTargets.length);
+    const shuffled = [...newPoints].sort(() => Math.random() - 0.5);
+    for (let i = 0; i < Math.min(textPointTargets.length, shuffled.length); i++) {
+      shuffled[i].textTarget = {
+        x: textPointTargets[i].x,
+        y: textPointTargets[i].y
+      };
+	  shuffled[i].radius = 1.5;
+    }
+	
+
+    return newPoints;
+  }
+
+  let mouseX = -9999;
+  let mouseY = -9999;
+
+  canvas.addEventListener('mousemove', e => {
+    mouseX = e.clientX;
+    mouseY = e.clientY;
+  });
+
+  canvas.addEventListener('mouseleave', () => {
+    mouseX = -9999;
+    mouseY = -9999;
+  });
+
+  canvas.addEventListener('touchstart', e => {
+    const touch = e.touches[0];
+    mouseX = touch.clientX;
+    mouseY = touch.clientY;
+  }, { passive: false });
+
+  canvas.addEventListener('touchmove', e => {
+    const touch = e.touches[0];
+    mouseX = touch.clientX;
+    mouseY = touch.clientY;
+  }, { passive: false });
+
+  canvas.addEventListener('touchend', () => {
+    mouseX = -9999;
+    mouseY = -9999;
+  });
+
+function animate() {
+  ctx.clearRect(0, 0, width, height);
+
+  for (let pt of points) {
+    let dxToMouse = pt.x - mouseX;
+    let dyToMouse = pt.y - mouseY;
+    let distToMouse = Math.sqrt(dxToMouse * dxToMouse + dyToMouse * dyToMouse);
+
+    // 1️⃣ Визначаємо ціль (текст або серце)
+    let targetX = pt.origX;
+    let targetY = pt.origY;
+
+    if (pt.textTarget && mouseX !== -9999 && distToMouse < repelDistance) {
+      targetX = pt.textTarget.x;
+      targetY = pt.textTarget.y;
+    }
+
+    // 2️⃣ Тягнемось до цілі
+    pt.vx += (targetX - pt.x) * 0.01;
+    pt.vy += (targetY - pt.y) * 0.01;
+
+    // 3️⃣ Відштовхування (тільки якщо точка НЕ текстова)
+    if (distToMouse < repelDistance && !pt.textTarget) {
+      let angle = Math.atan2(dyToMouse, dxToMouse);
+      let tNorm = (repelDistance - distToMouse) / repelDistance;
+      let force = easeOutExpo(tNorm);
+      pt.vx += Math.cos(angle) * force * 3.0;
+      pt.vy += Math.sin(angle) * force * 3.0;
+    }
+
+    // 4️⃣ Згасання швидкості й оновлення позиції
+    pt.vx *= 0.88;
+    pt.vy *= 0.88;
+    pt.x += pt.vx;
+    pt.y += pt.vy;
+
+    // 5️⃣ Малюємо
+    ctx.fillStyle = pt.color;
+    ctx.beginPath();
+    ctx.arc(pt.x, pt.y, pt.radius || 10, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  requestAnimationFrame(animate);
+}
+
+  // Старт
+  points = init();
+  animate();
+
+  window.addEventListener('resize', () => {
+    width = window.innerWidth;
+    height = window.innerHeight;
+    canvas.width = width;
+    canvas.height = height;
+    centerX = width / 2;
+    centerY = height / 2;
+    points = init();
+  });
+</script>
+</body>
+</html>
